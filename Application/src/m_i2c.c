@@ -639,6 +639,11 @@ void m_i2c_task_entry(void *p1, void *p2, void *p3)
 			 * 주석 참고). seq_num은 push된 샘플에만 증가하므로 gap 식별(SEQ notify)
 			 * 의미는 그대로 유지된다. */
 			if (is_gate_active_tick()) {
+				/* [버그 수정, 2026-10-01] 아래 dark 보정 sleep 계산에 쓸 "이번 활성
+				 * tick이 실제로 언제 시작됐는지" 기록 — 적분시간(nominal)이 아니라
+				 * 실제 경과시간을 직접 재기 위함(바로 아래 보정 블록 주석 참고). */
+				uint32_t active_tick_start_ms = k_uptime_get_32();
+
 				acquire_one_sample(&sample);
 
 				module_err_t err = m_i2c_ring_buffer_push(&sample);
@@ -669,25 +674,34 @@ void m_i2c_task_entry(void *p1, void *p2, void *p3)
 						m_ctrl_report_error(dark_err);
 					}
 
-					/* [버그 수정, 2026-09-30] dark는 lit과 같은 tick 안에서 추가로
-					 * 트리거+적분되는 구조라(위 주석 참고), 그 다음 lit이 원래
-					 * cycle_ms(예: 300ms) 뒤가 아니라 (lit 적분시간+dark 적분시간+
-					 * 자연 대기)만큼 뒤에 트리거돼 lit-lit 간격이 늘어남을 실측으로
-					 * 확인(2026-09-30, lit-lit 300ms 유지 구간 중 dark가 낀 구간만
-					 * 400ms로 벌어짐). dark 자신의 타임스탬프 정밀도는 보정용이라
-					 * 중요하지 않고 lit들의 간격이 항상 cycle_ms로 일정한 게
-					 * 중요하다는 게 확정 요구사항(사용자 결정) — 여기서 다음 lit을
-					 * 기존 tick 대기 없이 곧바로, 정확히 보정된 시간만큼만 재운 뒤
-					 * 직접 수행해서 lit3(이번 tick) 시작 시각 기준 정확히 cycle_ms
-					 * 뒤에 오도록 강제한다. */
-					uint32_t integration_ms = (uint32_t)s_fixed_integration_time * 20U;
+					/* [버그 수정, 2026-09-30, 2026-10-01 재수정] dark는 lit과 같은 tick
+					 * 안에서 추가로 트리거+적분되는 구조라(위 주석 참고), 그 다음
+					 * lit이 원래 cycle_ms(예: 300ms) 뒤가 아니라 그보다 늦게
+					 * 트리거돼 lit-lit 간격이 늘어남을 실측으로 확인(2026-09-30).
+					 * dark 자신의 타임스탬프 정밀도는 보정용이라 중요하지 않고
+					 * lit들의 간격이 항상 cycle_ms로 일정한 게 중요하다는 게 확정
+					 * 요구사항(사용자 결정) — 여기서 다음 lit을 기존 tick 대기 없이
+					 * 곧바로, 정확히 보정된 시간만큼만 재운 뒤 직접 수행해서 lit3
+					 * (이번 tick) 시작 시각 기준 정확히 cycle_ms 뒤에 오도록
+					 * 강제한다.
+					 * [2026-10-01 버그 수정] 최초 구현은 "lit+dark가 각각 정확히
+					 * 적분시간(nominal, 예: 100ms)만 걸린다"고 가정하고 보정량을
+					 * 계산했는데, 실제로는 트리거+AVALID 폴링+센서 2개 I2C 읽기
+					 * 오버헤드가 붙어 lit/dark 각각 적분시간보다 더 걸린다(오실로
+					 * 스코프로 active 폭이 공칭 100ms보다 길게 실측됨, 사용자
+					 * 2026-10-01 발견) — 그 결과 보정 sleep이 과도해져서 3번째
+					 * active마다 cycle_ms보다 지연되는 게 실기로 확인됐다. BLE
+					 * 데이터(device_ts)는 0.1초 단위로만 기록돼 이 수십ms 오차가
+					 * 안 보였을 뿐, 실제로는 있었다. nominal 적분시간으로 추정하는
+					 * 대신 k_uptime_get_32()로 이번 활성 tick이 실제로 시작된
+					 * 시각(active_tick_start_ms, 위에서 기록)부터 지금까지 실제
+					 * 경과한 시간을 직접 재서, 그 실측값 기준으로만 보정한다. */
 					uint32_t tick_ms = 1000U / SAMPLE_RATE_HZ;
 					uint32_t cycle_ms = (uint32_t)s_gate_cycle_ticks * tick_ms;
-					uint32_t lit_and_dark_ms = 2U * integration_ms; /* lit 자신 + dark, 둘 다
-										           * 같은 적분시간 사용 */
+					uint32_t elapsed_ms = k_uptime_get_32() - active_tick_start_ms;
 
-					if (lit_and_dark_ms < cycle_ms) {
-						k_sleep(K_MSEC(cycle_ms - lit_and_dark_ms));
+					if (elapsed_ms < cycle_ms) {
+						k_sleep(K_MSEC(cycle_ms - elapsed_ms));
 					}
 
 					nirs_sample_t next_lit_sample;
