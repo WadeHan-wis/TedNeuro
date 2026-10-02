@@ -7,6 +7,48 @@
 
 ---
 
+## 2026-10-02 (펌웨어 v0.1.38 → v0.1.39, 금요일 — BLE TX power -8dBm 미적용 발견/긴급 패치 + 9A PD2(NIR2) 간헐 초기화 실패 분석, `dev/change_sampling_logic` 브랜치)
+
+### 오늘 한눈에 보기
+- **BLE TX power -8dBm이 실제로는 한 번도 적용되지 않았음을 발견, v0.1.39로 수정** —
+  9A RTT 부팅 로그의 `opcode 0xfc0e status 0x01`(Unknown HCI Command) 경고가 단서.
+  `m_ble.c`의 HCI VS Write TX Power 명령은 SDC가 `CONFIG_BT_CTLR_TX_PWR_DYNAMIC_CONTROL=y`일
+  때만 지원(`hci_internal.c`)하는데 꺼져 있어 항상 거부됐고, 기기는 기본값 0dBm으로 동작.
+  `prj.conf`에 `CONFIG_BT_CTLR_TX_PWR_MINUS_8=y`(→ `sdc_default_tx_power_set(-8)`)를 넣고
+  죽은 HCI VS 호출을 제거. 같은 위치 OTA 비교로 적용 확인(RSSI 0dBm -44~-52 / -8dBm -52~-60dBm,
+  약 8dB 차). **v0.1.34~v0.1.38 구간의 20m 도달 시험·12h51m 배터리·방전 4회는 모두 0dBm 기준.**
+  실제 출력 값을 직접 읽는 방법은 이 구성에서 불가(`0x2007` 명령도 미지원). 상세는
+  `CHANGELOG.md` v0.1.39. 커밋 `4d3bf11` → `0420745` → `84e66e2`.
+- **9A PD2(NIR2, U9) 간헐 초기화 실패 분석 — 원인 미확정, 9A 1대에 한정된 결과** —
+  부팅 로그 7건 중 2건에서 NIR2 `WHOAMI` 실패(`err=-5`), NIR1은 항상 정상, 센서 전원 1.8V 정상(DVM).
+  실패 2건은 모두 리셋 원인 `0x0`(전원 인가 계열) 부팅. 나머지 3대(7E/3A/20)는 로그 미확보라
+  대변하지 않음. 정리는 `architecture.md` §11 항목 10 `[9A 한정]` 블록. 사용자가 PD2 통신선
+  (SCL P0.08/SDA P0.07)·풀업 R1/R2 중심으로 하드웨어 디버깅 진행 중(결과 미수신).
+- **코드에서 NIR2 = U9 확인**: `s_as7341[1]` → `i2c0`(TWIM0 `0x40003000`, SDA P0.07/SCL P0.08).
+  `architecture.md` 항목 10 일부 문구의 "I2C1"은 회로도 네트(`SCL_1V8_D2`) 기준 표기라 코드의
+  `i2c0`와 다름에 유의.
+- **공유 문서 `fNIRS 디바이스 노트 v0.1`** 완성(Artifact, 대상 윤성미 선임님) — 프로토콜 v4 패킷 표,
+  적분시간/게인 설명, 용어 정의. 전달 여부는 미확인.
+- **ATIME/ASTEP 100ms 정밀화는 보류** — 현재 99.80ms(ASTEP 358), 후보는 반올림(360 → 100.08ms).
+  `architecture.md` §11 항목 11에 기록, 코드/주석 미변경.
+- 10/1 이어받은 내용: v0.1.38(dark 보정 sleep을 실제 경과시간 기준으로 재수정, main 미병합)은
+  `CHANGELOG.md` v0.1.38, `architecture.md` §11 항목5 13~14차 참고.
+
+### 남은 작업 / 유의사항
+- **PD2 하드웨어 디버깅 결과 반영**(저항 측정 → 유휴 전압 → 오실로스코프 콜드 부팅 캡처 →
+  납땜 점검·세척 → 부품 교체). 변경 전후로 같은 조건(콜드/소프트 각 10회) 성공률 비교.
+- **-8dBm 기준 배터리 재측정**(급하지 않음, 0dBm에서 이미 12h 목표 달성 → 차이 확인 수준)과
+  **수면 중 연결 끊김 관찰**(지금까지 끊김 없었으나 출력이 낮아졌음).
+- D7 방전 11h42m23s(상한 12h12m23s)는 12h 목표에 못 미칠 수 있음 — 원인 구분 불가(밝기 설정·펌웨어
+  버전 미확인).
+- v0.1.39는 **main 미병합**(`dev/change_sampling_logic`). 버전 표기가 v0.1.38인 바이너리가 두 종류
+  (`41129ed`=0dBm 동작, 이후=-8dBm 적용 빌드)였으므로 부팅 배너의 커밋 해시로 구분.
+- OTA 파일은 `Application/build/dfu_application.zip`. `Application/build_m8`, `build_0dbm`은 임시
+  비교용(구 코드, gitignore)이라 최종 배포에 쓰지 말 것.
+- 일일 업무 일지/Gantt(10/2 열)는 갱신 완료, 트래커는 미갱신.
+
+---
+
 ## 2026-09-30 (펌웨어 v0.1.36 → v0.1.37, 수요일 — 배터리 12h 목표 달성 확인 + dark 프레임 샘플링 주기 왜곡 발견/수정 시도, `dev/change_sampling_logic` 브랜치)
 
 ### 오늘 한눈에 보기
