@@ -20,7 +20,7 @@ extern "C" {
  */
 #define FW_VERSION_MAJOR 0
 #define FW_VERSION_MINOR 1
-#define FW_VERSION_PATCH 38
+#define FW_VERSION_PATCH 39
 
 /* nirs_sample_t.fw_version(uint16_t)에 담기 위한 패킹: MAJOR(4bit)|MINOR(4bit)|PATCH(8bit) */
 #define FW_VERSION_PACKED \

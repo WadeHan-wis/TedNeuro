@@ -990,6 +990,34 @@
     없음). **하드웨어 검증 미실시** — BLE 실측 전류소비 변화(AT-06)는 별도 확인 필요
     (효과가 있더라도 매우 작을 것으로 예상, 리스크 낮은 정정 성격).
 
+## v0.1.39 (2026-10-02, `dev/change_sampling_logic` 브랜치 — main 미병합, 긴급 패치)
+
+- **[버그 수정] BLE TX power -8dBm이 실제로는 적용되지 않던 문제 수정** — 고장 디바이스
+  9A의 PD2 디버깅 중 RTT 부팅 로그에서 `opcode 0xfc0e status 0x01`(Unknown HCI
+  Command) 경고를 발견해 원인을 추적.
+  - **원인**: `m_ble.c`가 쓰던 HCI VS Write TX Power Level 명령은 SoftDevice
+    Controller가 `CONFIG_BT_CTLR_TX_PWR_DYNAMIC_CONTROL=y`일 때만 지원한다
+    (`nrf/subsys/bluetooth/controller/hci_internal.c`). 이 옵션이 꺼져 있어 명령이
+    항상 거부됐고, 코드는 실패해도 경고만 남기고 계속 동작하는 구조라 눈에 띄지 않았다.
+    그 결과 기기는 컨트롤러 기본값 **0dBm**으로 동작했다(v0.1.38 부팅 로그로 확인,
+    v0.1.34~37은 같은 설정이라 동일했을 것으로 추정).
+  - **수정**: `prj.conf`에 `CONFIG_BT_CTLR_TX_PWR_MINUS_8=y` 추가 — 컨트롤러 초기화 시
+    `sdc_default_tx_power_set(-8)`로 전체 송신 기본값이 -8dBm이 된다. 항상 실패하던
+    `m_ble.c`의 HCI VS 호출(`set_fixed_tx_power()`, 광고/연결 시 호출 2곳)과 관련
+    상수/include를 제거.
+  - **영향**: v0.1.34~v0.1.38 구간의 20m 도달 시험, 12시간 51분 배터리 실측, RSSI
+    결과는 실제로는 **0dBm 기준**이다. -8dBm 기준 배터리 재측정은 추가로 진행 예정
+    (0dBm에서 이미 12h 목표 달성이라 급하지 않고 차이 확인 수준), 수면 중 측정에서
+    -8dBm 적용 후 연결 끊김이 생기는지 관찰 필요(지금까지는 끊김 없었음).
+  - **빌드 검증 완료**: `west build -b nrf52dk/nrf52832 Application`, 에러 없음,
+    App Flash 75.05%/RAM 92.50%(RAM 변화 없음, 죽은 코드 제거로 Flash 약 0.2% 감소).
+    **하드웨어 검증(부분)**: 같은 위치에서 OTA로 0dBm/-8dBm 빌드만 바꿔 연결 상태
+    RSSI를 비교 — 0dBm -44~-52dBm, -8dBm -52~-60dBm(중간값 약 8dB 차). 컨트롤러의
+    실제 출력 값을 직접 읽는 방법은 이 구성에서 지원되지 않아(`0x2007` 명령 미지원)
+    RSSI 비교가 유일한 확인. 수면 중 안정성/배터리는 미검증.
+  - 버전 표기: `VERSION`, `config_app.h FW_VERSION_PATCH`, `CONFIG_BT_DEVICE_NAME`을
+    함께 v0.1.39로 올림.
+
 ## v0.1.38 (2026-10-01, `dev/change_sampling_logic` 브랜치 — main 미병합, v0.1.37 재수정)
 
 - **[버그 수정] dark 보정 sleep 계산이 nominal 적분시간 가정이라 과소/과대
