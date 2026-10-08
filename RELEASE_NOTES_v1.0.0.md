@@ -11,6 +11,8 @@
 
 ## 1. 배포 파일 (`Application/build_release_v1.0.0/`)
 
+배포 위치(Google Drive): https://drive.google.com/drive/folders/1AUfcP8mEjhUY7MghvyMbwEYOJFijkJZU
+
 | 파일 | 용도 | SHA-256 |
 |---|---|---|
 | `TedNeuro_v1.0.0_dfu.zip` | **OTA 업데이트 파일** (nRF Connect Device Manager) | `111acf2820d32f54f63f9d8ba669c8a379c36e13d83f39b937117f24de041ab0` |
@@ -79,7 +81,10 @@
 | 문서 | 내용 |
 |---|---|
 | `RELEASE_NOTES_v1.0.0.md` | 이 문서 |
-| `protocol_version_v4.md` | BLE 프로토콜 명세 (앱 개발자용, 영문) |
+| `release_docs/01_프로토콜_v1.0.0.md` | BLE 프로토콜 명세 v1.0.0 (한국어, 공유용) |
+| `release_docs/02_파라미터_v1.0.0.md` | 펌웨어 파라미터 명세 v1.0.0 (공유용) |
+| `release_docs/03_디바이스_v1.0.0.md` | 디바이스 명세 v1.0.0: 하드웨어·동작·제약 (공유용) |
+| `protocol_version_v4.md` | BLE 프로토콜 명세 영문 원본 |
 | `tedneuro_firmware_integration.md` | 연동 가이드·빌드 절차 (영문) |
 | `tedneuro_partner_qa_response.md` | 협력사 질의 답변 (v0.1.26 시점 기록, 정정 안내 포함) |
 | `v1.0_결정사항.md` | v1.0 확정 결정 5건과 근거 |
