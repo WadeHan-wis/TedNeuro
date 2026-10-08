@@ -990,6 +990,92 @@
     없음). **하드웨어 검증 미실시** — BLE 실측 전류소비 변화(AT-06)는 별도 확인 필요
     (효과가 있더라도 매우 작을 것으로 예상, 리스크 낮은 정정 성격).
 
+## v1.0.0 (2026-10-08, `dev/change_sampling_logic` → main 병합 — **v1.0 릴리스**)
+
+- **[릴리스] v1.0.0 — 코드 변경은 버전 표기뿐이다(동작 코드는 v0.1.39와 동일).** `Application/VERSION`
+  (MAJOR=1, MINOR=0, PATCHLEVEL=0), `config_app.h FW_VERSION_MAJOR/MINOR/PATCH`(1/0/0, 패킹 `0x1000`),
+  `prj.conf CONFIG_BT_DEVICE_NAME="TedNeuro_v1.0.0"` 세 곳을 함께 올렸다. 이 세 곳이 어긋나면 OTA가
+  버전 체크로 거부될 수 있다.
+- **v1.0 확정 사양(2026-10-06~07, `v1.0_결정사항.md`, `v1.0_파라미터_확정.md`)**: LED 3파장 동시 점등
+  (Cycle 300ms / Active 100ms), PWM 25/50/75%, 게인 256x(AGAIN=9), 적분시간 약 99.8ms(ATIME=99,
+  ASTEP=358), dark 프레임 3:1, 패킷 v4(레코드 14B), BLE TX power -8dBm, 링버퍼 220샘플(연결 끊김 시
+  약 22초 보관), 페어링 비활성(요구 조건 발생 시 개발), 온보드 flash 저장 없음.
+  **적분시간 99.8ms와 Cycle/Active 300/100ms는 앱이 접속할 때마다 CONFIG를 써야 적용된다**(펌웨어 기본값은
+  19.7ms, 100/100ms — 변경하지 않음). 앱 CONFIG 값은 `protocol_version_v4.md` §2 참고.
+- **v0.1.39 기준 검증 이력(10/6~10/7)**: E7 야간 수면 측정 2회(각 약 4.6시간) 끊김·재부팅 없음, 순번 유실 0,
+  센서 1·2 정상 출력, lit 간격 300ms. OTA 업데이트·롤백 재검증 6개 시나리오 통과(9A 1대, `Application/
+  build_ota_test/OTA_테스트_결과.md`): 확정하지 않은 이미지 롤백, 불량 이미지 복귀, 서명 변조 이미지 미실행, 업로드
+  70% 전원 차단 후 이전 버전 유지·재업로드, 정상 업데이트+확정 유지, v0.1.39 복구. 수면 데이터 종합 분석
+  (Day1~Day6) 결론은 `docs/수면데이터_분석_종합결론_20261007.md`.
+- **알려진 이슈 / 제약(릴리스 노트에 포함)**:
+  - 센서 초기화 실패 시 그 센서를 재부팅 전까지 배제하고 raw를 0으로 전송한다. 상태 정보가 패킷에 없어 정상 0값과
+    구분이 안 된다(v1.x 이월). 센서 2(U9)는 납땜 접촉 불량이 유력해 일부 프로토타입 보드에서 열풍기 리터치로
+    복구됐다(`v1.0_센서2_초기화_실패_이슈.md`). 9A는 10/7부터 센서 1(NIR1)이 초기화 실패(원인 미확인).
+  - 착용 이탈을 기기가 알지 못한다. 기기 시계가 앱 시계보다 약 +107ppm 빠르다(12시간에 약 4.4초, 샘플링 간격에는
+    영향 없음). 12시간 연속 수면 검증은 아직 없다(최장 4.6시간). 배터리·도달 거리 실측은 0dBm 기준이다
+    (v0.1.34~v0.1.38은 -8dBm 설정이 실제로는 적용되지 않았음, v0.1.39에서 수정).
+  - OTA 서명키는 sysbuild 기본 디버그 키, 페어링/암호화 비활성(개발 단계 상태, 양산 전 결정 필요).
+- **빌드 검증 완료**: `west build -b nrf52dk/nrf52832 Application -d Application/build_v100 -p always`, 에러 없음,
+  `version_MCUBOOT: "1.0.0+0"`, App Flash 75.05%(162,672B)/RAM 92.50%(60,624B), mcuboot Flash 70.74%.
+  **실기기 OTA 업데이트·부팅 확인은 별도(2026-10-08 진행, 결과는 SESSION_NOTES/일지 참고) — 이 항목 작성 시점에는 미검증.**
+
+## v0.1.39 (2026-10-02, `dev/change_sampling_logic` 브랜치 — main 미병합, 긴급 패치)
+
+- **[버그 수정] BLE TX power -8dBm이 실제로는 적용되지 않던 문제 수정** — 고장 디바이스
+  9A의 PD2 디버깅 중 RTT 부팅 로그에서 `opcode 0xfc0e status 0x01`(Unknown HCI
+  Command) 경고를 발견해 원인을 추적.
+  - **원인**: `m_ble.c`가 쓰던 HCI VS Write TX Power Level 명령은 SoftDevice
+    Controller가 `CONFIG_BT_CTLR_TX_PWR_DYNAMIC_CONTROL=y`일 때만 지원한다
+    (`nrf/subsys/bluetooth/controller/hci_internal.c`). 이 옵션이 꺼져 있어 명령이
+    항상 거부됐고, 코드는 실패해도 경고만 남기고 계속 동작하는 구조라 눈에 띄지 않았다.
+    그 결과 기기는 컨트롤러 기본값 **0dBm**으로 동작했다(v0.1.38 부팅 로그로 확인,
+    v0.1.34~37은 같은 설정이라 동일했을 것으로 추정).
+  - **수정**: `prj.conf`에 `CONFIG_BT_CTLR_TX_PWR_MINUS_8=y` 추가 — 컨트롤러 초기화 시
+    `sdc_default_tx_power_set(-8)`로 전체 송신 기본값이 -8dBm이 된다. 항상 실패하던
+    `m_ble.c`의 HCI VS 호출(`set_fixed_tx_power()`, 광고/연결 시 호출 2곳)과 관련
+    상수/include를 제거.
+  - **영향**: v0.1.34~v0.1.38 구간의 20m 도달 시험, 12시간 51분 배터리 실측, RSSI
+    결과는 실제로는 **0dBm 기준**이다. -8dBm 기준 배터리 재측정은 추가로 진행 예정
+    (0dBm에서 이미 12h 목표 달성이라 급하지 않고 차이 확인 수준), 수면 중 측정에서
+    -8dBm 적용 후 연결 끊김이 생기는지 관찰 필요(지금까지는 끊김 없었음).
+  - **빌드 검증 완료**: `west build -b nrf52dk/nrf52832 Application`, 에러 없음,
+    App Flash 75.05%/RAM 92.50%(RAM 변화 없음, 죽은 코드 제거로 Flash 약 0.2% 감소).
+    **하드웨어 검증(부분)**: 같은 위치에서 OTA로 0dBm/-8dBm 빌드만 바꿔 연결 상태
+    RSSI를 비교 — 0dBm -44~-52dBm, -8dBm -52~-60dBm(중간값 약 8dB 차). 컨트롤러의
+    실제 출력 값을 직접 읽는 방법은 이 구성에서 지원되지 않아(`0x2007` 명령 미지원)
+    RSSI 비교가 유일한 확인. 수면 중 안정성/배터리는 미검증.
+  - 버전 표기: `VERSION`, `config_app.h FW_VERSION_PATCH`, `CONFIG_BT_DEVICE_NAME`을
+    함께 v0.1.39로 올림.
+
+## v0.1.38 (2026-10-01, `dev/change_sampling_logic` 브랜치 — main 미병합, v0.1.37 재수정)
+
+- **[버그 수정] dark 보정 sleep 계산이 nominal 적분시간 가정이라 과소/과대
+  보정되던 문제 수정** — v0.1.37로 BLE 데이터(0.1초 단위라 수십ms 오차는
+  안 보임, 아래 참고)는 통과했으나, 사용자가 오실로스코프(R17, LED1 구동선
+  직접 프로빙, Cycle 300ms 커서 측정은 정확히 일치)로 재검증하는 과정에서
+  "active 폭이 공칭 100ms보다 길다"와 "3번째 active마다 다음 active와
+  미묘하게 딜레이가 생긴다"를 발견·제보.
+  - **원인**: v0.1.37의 보정 sleep 계산이 `lit_and_dark_ms = 2 × (적분시간
+    nominal값)`으로 "lit/dark가 각각 정확히 적분시간만큼만 걸린다"고
+    가정했는데, 실제 `acquire_common()`은 적분시간 외에 트리거+AVALID
+    폴링+센서 2개 I2C 읽기 오버헤드가 더 붙어서 lit 하나가 공칭보다 더
+    걸린다(오실로스코프 active 폭 실측으로 확인). 그 결과 보정 sleep이
+    과도해져 dark가 낀 구간에서 3번째 active마다 cycle_ms보다 지연됨 —
+    v0.1.37이 고치려던 문제가 축소된 형태로 재발한 것. BLE 데이터
+    `device_ts`가 0.1초 단위로만 기록돼 이 수십ms 오차가 "지터 0"으로
+    보였을 뿐 실제로는 있었다(v0.1.37 항목에 정정 추가).
+  - **수정**: nominal 적분시간으로 추정하는 대신, 이번 활성 tick이 실제로
+    시작된 시각을 `k_uptime_get_32()`로 기록해두고(`active_tick_start_ms`),
+    dark까지 끝난 시점에 실제 경과시간을 직접 측정해서
+    `cycle_ms - 실제경과시간`만큼만 재우도록 변경 — I2C 오버헤드가 얼마든
+    실측값 기준으로 정확히 보정된다(`m_i2c.c`, `is_gate_active_tick()` 블록
+    상단 참고).
+  - **빌드 검증 완료**: `west build -b nrf52dk/nrf52832 Application -d
+    Application/build -p always` 성공, App Flash 75.25%(+16B)/RAM 92.50%
+    (변화 없음). **하드웨어 검증 미실시** — 이번엔 오실로스코프(R17)로
+    active 간격이 3번째마다 밀리지 않고 항상 정확히 300ms 간격인지 직접
+    재확인 필요. `main` 병합은 이 검증 통과 후 진행.
+
 ## v0.1.37 (2026-09-30, `dev/change_sampling_logic` 브랜치 — main 미병합)
 
 - **[버그 수정 시도, 하드웨어 검증 전 임시] dark 프레임 삽입으로 인한 lit 샘플링
@@ -1024,6 +1110,11 @@
   - **빌드 검증 완료**: `west build -b nrf52dk/nrf52832 Application -d
     Application/build -p always` 성공, App Flash 75.24%(+184B)/RAM 92.50%
     (변화 없음).
+  - **[정정, 2026-10-01] 위 하드웨어 검증 결과가 불충분했음이 밝혀짐** — BLE
+    데이터의 `device_ts` 컬럼이 0.1초(100ms) 단위로만 기록돼, 수십ms 수준의
+    오차는 "지터 0"으로 보여도 실제로는 감지 못 하는 측정이었다. 사용자가
+    오실로스코프(R17, LED1 구동선)로 직접 재본 결과 3번째 active마다 실제로
+    딜레이가 있는 것으로 재확인 — 상세 원인/재수정은 v0.1.38 참고.
 
 ## v0.1.36 (2026-09-29)
 

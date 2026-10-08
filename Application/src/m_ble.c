@@ -4,7 +4,6 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gap.h>
 #include <zephyr/bluetooth/gatt.h>
-#include <zephyr/bluetooth/hci_vs.h>
 #include <zephyr/sys/byteorder.h>
 #include <errno.h>
 #include "m_ble.h"
@@ -83,49 +82,6 @@ static const struct bt_data s_scan_rsp_data[] = {
 	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
-/* [전력 최적화, 2026-09-29] TX power 고정(-8dBm) — 이전부터 TODO(open-item)로 남아있던
- * S2 정책(§2.4) 항목을 이번에 적용한다. 착용형 기기라 폰과의 거리가 통상 1m 이내라
- * 기본값(대개 0dBm)보다 낮춰도 통신 안정성에 문제 없을 것으로 판단(실기 RSSI/재연결
- * 안정성 검증 필요). SoftDevice Controller(SDC)가 Zephyr HCI vendor-specific 확장
- * (`CONFIG_BT_HAS_HCI_VS`, SDC 컨트롤러 선택 시 자동 활성화)을 지원해 advertising/
- * connection 핸들 각각에 대해 설정 가능(zephyr/samples/bluetooth/hci_pwr_ctrl 패턴). */
-#define BLE_TX_POWER_DBM -8
-
-/* handle_type=BT_HCI_VS_LL_HANDLE_TYPE_ADV(핸들 무시, 0 고정)/_CONN(연결 핸들)로
- * advertising/connection 각각의 TX power를 요청한다 — 컨트롤러가 실제 반영한 값을
- * 응답으로 돌려주지만 여기서는 로그만 남기고 실패해도 치명적이지 않아(fallback: 기본
- * TX power로 계속 동작) 별도 에러 전파는 하지 않는다. */
-static void set_fixed_tx_power(uint8_t handle_type, uint16_t handle, int8_t tx_power_dbm)
-{
-	struct bt_hci_cp_vs_write_tx_power_level *cp;
-	struct bt_hci_rp_vs_write_tx_power_level *rp;
-	struct net_buf *buf, *rsp = NULL;
-
-	buf = bt_hci_cmd_alloc(K_FOREVER);
-	if (!buf) {
-		LOG_WRN("TX power 설정 실패 — HCI 커맨드 버퍼 할당 불가");
-		return;
-	}
-
-	cp = net_buf_add(buf, sizeof(*cp));
-	cp->handle = sys_cpu_to_le16(handle);
-	cp->handle_type = handle_type;
-	cp->tx_power_level = tx_power_dbm;
-
-	int err = bt_hci_cmd_send_sync(BT_HCI_OP_VS_WRITE_TX_POWER_LEVEL, buf, &rsp);
-
-	if (err != 0) {
-		LOG_WRN("TX power 설정 실패(handle_type=%u, err=%d) — 기본값으로 동작",
-			handle_type, err);
-		return;
-	}
-
-	rp = (void *)rsp->data;
-	LOG_INF("TX power 설정 완료(handle_type=%u): 요청 %ddBm -> 실제 %ddBm", handle_type,
-		tx_power_dbm, rp->selected_tx_power);
-	net_buf_unref(rsp);
-}
-
 /* bt_enable() 직후(ble_init())와 연결 해제 후(on_disconnected()) 양쪽에서 호출된다.
  * Zephyr peripheral은 연결되면 advertising이 자동 중단되고 연결 해제 후 자동으로
  * 재시작되지 않으므로, 앱이 다시 스캔/연결할 수 있게 매번 명시적으로 시작해야 한다.
@@ -142,8 +98,6 @@ static int start_advertising(void)
 
 	LOG_INF("BLE advertising started (AS7341_SERVICE_UUID, device name %s)",
 		CONFIG_BT_DEVICE_NAME);
-
-	set_fixed_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_ADV, 0, BLE_TX_POWER_DBM);
 
 	return 0;
 }
@@ -218,18 +172,6 @@ static void on_connected(struct bt_conn *conn, uint8_t err)
 	/* DATA0/DATA1 notify 대상 conn을 보관한다 — bt_conn_ref()로 참조를 잡아둬야
 	 * 콜백 리턴 이후에도(다음 notify 호출 시점까지) 유효하다. */
 	s_conn = bt_conn_ref(conn);
-
-	/* [전력 최적화, 2026-09-29] advertising TX power는 start_advertising()에서 이미
-	 * 고정했지만, connection 자체도 별도 핸들이라 연결마다 다시 설정해야 한다. */
-	uint16_t conn_handle;
-	int handle_err = bt_hci_get_conn_handle(conn, &conn_handle);
-
-	if (handle_err != 0) {
-		LOG_WRN("bt_hci_get_conn_handle 실패(err=%d) — connection TX power 기본값 유지",
-			handle_err);
-	} else {
-		set_fixed_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_CONN, conn_handle, BLE_TX_POWER_DBM);
-	}
 
 	/* MTU 협상 전까지는 배치 크기를 안전하게 1로 되돌린다 — 이전 연결에서 얻은 값을
 	 * 새 연결(다른 중앙기기/앱)에 그대로 쓰면 안 되기 때문. */
@@ -331,8 +273,8 @@ static module_err_t ble_init(void)
 
 	/* [전력 최적화, 2026-09-21] MTU 협상/배칭/connection param 조정은 on_connected()에서
 	 * 연결마다 수행한다(위 mtu_exchange_cb()/BLE_CONN_* 참고) — S2 정책(§2.4)의 MTU
-	 * 251byte 목표를 이제 채택. TX power -8dBm 고정은 2026-09-29에 적용 완료
-	 * (start_advertising()/on_connected()의 set_fixed_tx_power() 호출 참고).
+	 * 251byte 목표를 이제 채택. TX power -8dBm은 prj.conf의
+	 * CONFIG_BT_CTLR_TX_PWR_MINUS_8로 적용한다.
 	 */
 	return MODULE_ERR_OK;
 }

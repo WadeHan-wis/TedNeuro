@@ -18,9 +18,9 @@ extern "C" {
  * CHANGELOG.md v0.0.15 참고). 이후 패치는 v0.1.1 → v0.1.2 → ...
  * 버전 이력은 CHANGELOG.md 참고.
  */
-#define FW_VERSION_MAJOR 0
-#define FW_VERSION_MINOR 1
-#define FW_VERSION_PATCH 37
+#define FW_VERSION_MAJOR 1
+#define FW_VERSION_MINOR 0
+#define FW_VERSION_PATCH 0
 
 /* nirs_sample_t.fw_version(uint16_t)에 담기 위한 패킹: MAJOR(4bit)|MINOR(4bit)|PATCH(8bit) */
 #define FW_VERSION_PACKED \
