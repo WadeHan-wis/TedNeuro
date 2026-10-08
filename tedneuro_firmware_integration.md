@@ -1,6 +1,6 @@
 # fNIRS Firmware — TedNeuro Integration: Required Changes, Source Access & Build Guide
 
-**Firmware reference version:** v0.1.26 (see `protocol_version_v4.md` for the BLE protocol this build implements)
+**Firmware reference version:** v1.0.0 (released 2026-10-08; see `protocol_version_v4.md` for the BLE protocol this build implements)
 
 ## 1. Summary
 
@@ -13,16 +13,16 @@
 
 Your reference point ("sample code") is the nRF5 SDK example this project's protocol lineage originates from (bare-metal/FreeRTOS + SoftDevice, single AS7341 sensor, `ble_as7341.c` GATT service, `led.c` 2-channel LED driver). The production firmware has diverged from that baseline in the following ways:
 
-| Aspect | Baseline sample code | Current production firmware (v0.1.26) |
+| Aspect | Baseline sample code | Current production firmware (v1.0.0) |
 |---|---|---|
 | Platform | nRF5 SDK + FreeRTOS + SoftDevice (S112/S132/S140) | Nordic nRF Connect SDK (Zephyr RTOS) |
 | Sensor count | 1× AS7341 | 2× AS7341 (independent I2C buses), reported as DATA0/DATA1 |
 | LED channels | 2 (RED %, IR %) | 3 (640nm / 680nm / 980nm, individually controlled) |
 | Timing source | SoftDevice/RTOS default timers | Dedicated hardware RTC (nrfx, directly driven) with drift correction, decoupled from the BLE stack |
-| GATT layout | `BLE_UUID_AS7341_SERVICE` / `_LED_CONFIG_CHAR` / `_DATA_CHAR_DEV0`/`DEV1` (same naming lineage) | Same UUID base and characteristic role (CONFIG, DATA0/1), but frame format has evolved through 4 protocol revisions (see `protocol_version_v4.md` §7) |
+| GATT layout | `BLE_UUID_AS7341_SERVICE` / `_LED_CONFIG_CHAR` / `_DATA_CHAR_DEV0`/`DEV1` (same naming lineage) | Same UUID base and characteristic role (CONFIG, DATA0/1), but frame format has evolved through 4 protocol revisions (see `protocol_version_v4.md` §9) |
 | Data framing | Simple per-sample notify | Variable-length **batched** frames (multiple samples per notification, negotiated by MTU) for radio power efficiency |
 | Ambient light handling | None | Periodic **dark-frame** (LEDs-off) samples interleaved for ambient/dark-current subtraction |
-| Saturation detection | None found in reference | Hardware-register-based (AS7341 STATUS2 ASAT bits), computed on-device |
+| Saturation detection | None found in reference | Hardware-register-based (AS7341 STATUS2 ASAT bits), evaluated on-device for fault handling; **not transmitted** in the data record (no status field in protocol v4) |
 | OTA / firmware update | None | MCUboot + Zephyr SMP (BLE-based) update and rollback |
 | Reliability | None found in reference | Hardware watchdog, ring-buffer-backed BLE disconnect tolerance, defined safe-state fault handling |
 | Other peripherals in baseline | EEG (ADS1299), motion (MPU), battery service | Not present / not used — out of scope for this device's current spec |
@@ -45,7 +45,7 @@ If any of these are required for your integration, please specify which ones and
 ---
 
 
-## 3. Build / Toolchain Guide (current version, v0.1.26)
+## 3. Build / Toolchain Guide (current version, v1.0.0)
 
 ### 3.1 Prerequisites
 
@@ -90,15 +90,18 @@ This is a **sysbuild** project (MCUboot is built automatically as a child image 
 
 | File | Location (relative to build dir) | Purpose |
 |---|---|---|
-| `zephyr/zephyr.elf` / `zephyr.hex` | `build/Application/` | Raw application image (for direct/wired flashing via SWD/J-Link) |
-| `Application.signed.bin` | `build/` | MCUboot-signed application image |
+| `zephyr/zephyr.elf` / `zephyr.hex` | `build/Application/` | Raw application image (unsigned) |
+| `zephyr/zephyr.signed.bin` / `zephyr.signed.hex` | `build/Application/` | MCUboot-signed application image (`.hex` for wired flashing, `.bin` for mcumgr) |
+| `zephyr/zephyr.hex` | `build/mcuboot/` | MCUboot bootloader (flash it first on a blank device) |
 | `dfu_application.zip` | `build/` | OTA package (contains signed image + `manifest.json` with version metadata) for BLE-based firmware update (Zephyr SMP / nRF Connect Device Manager app) |
 
-`manifest.json` inside `dfu_application.zip` includes a `version_MCUBOOT` field (e.g. `"0.1.26+0"`) that should match the firmware's `AS7341_VERSION` characteristic value at runtime — use this to confirm you're testing against the expected build.
+The v1.0.0 release files are collected, renamed and checksummed in `RELEASE_NOTES_v1.0.0.md` §1 (`TedNeuro_v1.0.0_dfu.zip`, `TedNeuro_v1.0.0.signed.bin`, `TedNeuro_v1.0.0_app.signed.hex`, `mcuboot.hex`).
+
+`manifest.json` inside `dfu_application.zip` includes a `version_MCUBOOT` field (e.g. `"1.0.0+0"`) that should match the firmware's `AS7341_VERSION` characteristic value at runtime — use this to confirm you're testing against the expected build.
 
 ### 3.5 Flashing
 
-- **Wired (SWD/J-Link)**: `west flash` (requires a J-Link or compatible debug probe connected to the board's SWD pins).
+- **Wired (SWD/J-Link)**: `west flash` (flashes MCUboot and the application; requires a J-Link or compatible debug probe connected to the board's SWD pins).
 - **Wireless (OTA)**: use `dfu_application.zip` with a Zephyr SMP-compatible client (e.g. Nordic's "nRF Connect Device Manager" mobile app) against the already-running device over BLE — no wired connection needed. This is the normal update path once a device is deployed; wired flashing is primarily used for factory programming and low-level debugging.
 
 ### 3.6 Verifying a build against this document

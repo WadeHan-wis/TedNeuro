@@ -1,5 +1,15 @@
 # Response to TedNeuro Integration Questions
 
+> **Status note (2026-10-08):** This is the answer set sent when the firmware was **v0.1.26**; the answers are kept as written. The current release is **v1.0.0**. Where the current behavior differs, use `protocol_version_v4.md` (v1.0.0) as the reference. Differences:
+>
+> | Question | Answer given at v0.1.26 | Current (v1.0.0) |
+> |---|---|---|
+> | Q12 device name | `TedNeuro_v0.1.26` | `TedNeuro_v1.0.0` |
+> | Q14 dark frames | about 1 in 10 samples | **1 dark frame per 3 lit samples**; lit samples every 300ms with the required CONFIG |
+> | Q14, Q17–18 defaults | free-running ~10Hz, ≈19.7ms integration, all LEDs 50% | power-on defaults are gain 256×, ≈19.7ms, 100/100ms, LED 25/50/75%; **the application must write CONFIG `05 01 19 32 4B 00 2C 01 64 00` after every connection** (≈99.8ms integration, 300/100ms cycle) |
+> | Q30 delivered / latest version | v0.1.23 / v0.1.26 | latest release v1.0.0 |
+> | Bit 31 of `seq_num` | dark flag | unchanged — mask it off (`& 0x7FFFFFFF`) before comparing sequence numbers |
+
 One note up front: the GATT UUIDs you referenced (`...1525...`, `...1526...`) match our firmware exactly (base `xxxxxxxx-1212-efde-1523-785feabcd123`, service `0x1523`). However, there are a few corrections to make regarding the protocol itself — please review the packet-format answers below before implementing your parser. Full details are in the two attached documents, `protocol_version_v4.md` and `tedneuro_firmware_integration.md`.
 
 ---

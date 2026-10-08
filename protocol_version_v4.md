@@ -1,6 +1,6 @@
 # fNIRS BLE Protocol Specification — v4
 
-**Firmware reference version:** v0.1.39 (updated 2026-10-07; draft for v1.0.0 release - the protocol itself is unchanged since v4)
+**Firmware reference version:** v1.0.0 (released 2026-10-08; behaviorally identical to v0.1.39 — the protocol itself is unchanged since v4)
 **Protocol version:** 4 (`BLE_PROTOCOL_VERSION = 4`, readable via the VERSION characteristic below)
 
 ## Scope
@@ -75,7 +75,7 @@ Each characteristic streams samples from one of the two onboard NIR sensors inde
 | Offset | Size | Field | Notes |
 |---|---|---|---|
 | 0–3 | 4 | `timestamp_us` | u32 LE, device-relative microsecond counter. **Wraps every 2³² µs (≈71.58 minutes)** — this is expected, defined-behavior overflow, not a fault. Do not treat a decreasing value as an error by itself; use it only for short-interval timing, or unwrap it if you need an absolute session clock. |
-| 4–7 | 4 | `seq_num_and_flag` | u32 LE. **Bit 31** = dark-frame flag (see §5). **Bits 0–30** = monotonic sequence number (wraps at ~2.1 billion — not a practical concern). |
+| 4–7 | 4 | `seq_num_and_flag` | u32 LE. **Bit 31** = dark-frame flag (see §5). **Bits 0–30** = monotonic sequence number (wraps at ~2.1 billion — not a practical concern). **Mask bit 31 off (`seq & 0x7FFFFFFF`) before comparing or gap-checking sequence numbers**: a dark frame carries the same sequence number as its neighbours plus `0x80000000`, so an unmasked comparison reports a bogus gap of 2,147,483,648 samples. |
 | 8–9 | 2 | `red630` | u16 LE, raw ADC count |
 | 10–11 | 2 | `red680` | u16 LE, raw ADC count |
 | 12–13 | 2 | `nir` | u16 LE, raw ADC count |
@@ -94,7 +94,7 @@ Values are **raw, unprocessed sensor counts** — no calibration, no Beer-Lamber
 
 | Item | Value | Status |
 |---|---|---|
-| Advertised name | `TedNeuro_v{MAJOR}.{MINOR}.{PATCH}` (e.g. `TedNeuro_v0.1.39`) | Updated every firmware patch release |
+| Advertised name | `TedNeuro_v{MAJOR}.{MINOR}.{PATCH}` (e.g. `TedNeuro_v1.0.0`) | Updated every firmware patch release |
 | Connection interval | 30ms | Requested by the device; the central may override |
 | Peripheral latency | 4 | Initial value |
 | Supervision timeout | 4000ms | Requested by the device; the central may override |
@@ -146,9 +146,10 @@ Implementation notes for the receiving application:
 
 ## 8. Firmware update (OTA, MCUboot + SMP over BLE)
 
-- The device supports over-the-air updates with the standard SMP image-management service (nRF Connect Device Manager / mcumgr). The update file is `dfu_application.zip`; the image version comes from the firmware `VERSION` file and must match the firmware's own version fields.
+- The device supports over-the-air updates with the standard SMP image-management service (nRF Connect Device Manager / mcumgr). The update file is `dfu_application.zip` (released as `TedNeuro_v1.0.0_dfu.zip`); the image version comes from the firmware `VERSION` file and must match the firmware's own version fields.
 - An uploaded image is applied in **test** mode: the device swaps to it at the next reboot and runs it once. **The application (or operator) must send Confirm after verifying the new firmware**; an unconfirmed image is reverted to the previous version at the next reset, whether the reset was a power cycle or a fault.
 - Verified on 2026-10-07 with v0.1.39 as the running image (one unit): an unconfirmed image reverts at the next reset; an image that crashes and halts after boot is reverted at the next reset (the hardware watchdog is expected to reset a halted device within about 4 seconds; whether the watchdog or a manual power cycle caused the reset was not separately verified); an image with a corrupted signature is not executed; power loss at 70% of an upload leaves the previous firmware intact and the upload can be repeated; a normal update stays after Confirm.
+- Verified on 2026-10-08 with v1.0.0 (same unit): OTA update from the running firmware, boot, both sensors initialized, CONFIG applied and data received by the application, and v1.0.0 retained after a power cycle. The rollback scenarios above were not repeated on v1.0.0 because the code is identical to v0.1.39.
 - The signing key is currently the build system's default debug key and pairing/encryption is disabled, so the update service is unauthenticated. Both are intentional for the current development stage.
 
 ## 9. Protocol version history
@@ -159,6 +160,8 @@ Implementation notes for the receiving application:
 | v2 | Frame expanded to 16 bytes, added `timestamp_us`/`seq_num` directly |
 | v3 | Switched to the variable-length batching frame (`[count] + record×N`), removed the dead LED-index field |
 | **v4 (current)** | Same frame structure as v3; repurposes bit 31 of `seq_num` as a dark-frame flag (no frame-length change) |
+
+Firmware v1.0.0 (2026-10-08) is a version-label release of v0.1.39 with no protocol or behavior change.
 
 Firmware changes since v0.1.26 that do not change the protocol: dark-frame ratio 1:10 to 3:1 with lit-to-lit timing kept at 300ms (v0.1.34-v0.1.37), Tx power -8dBm actually applied (v0.1.39), boot-time handling of a failed sensor (v0.1.32), default LED duty 25/50/75% (v0.1.36).
 

@@ -1017,7 +1017,10 @@
   - OTA 서명키는 sysbuild 기본 디버그 키, 페어링/암호화 비활성(개발 단계 상태, 양산 전 결정 필요).
 - **빌드 검증 완료**: `west build -b nrf52dk/nrf52832 Application -d Application/build_v100 -p always`, 에러 없음,
   `version_MCUBOOT: "1.0.0+0"`, App Flash 75.05%(162,672B)/RAM 92.50%(60,624B), mcuboot Flash 70.74%.
-  **실기기 OTA 업데이트·부팅 확인은 별도(2026-10-08 진행, 결과는 SESSION_NOTES/일지 참고) — 이 항목 작성 시점에는 미검증.**
+  **실기기 확인(2026-10-08, 9A 1대, 부팅 로그 2회·앱 화면 기준):** OTA 업데이트 후 v1.0.0 부팅(배너 `v1.0.0-62c75a6b5a96`, 리셋 원인 0x0), 센서 1·2 모두 WHOAMI 0x24·SMUX 성공, 앱 접속 후 CONFIG(`05 01 19 32 4B 00 2C 01 64 00`) 적용·notify 구독·센서 1·2 데이터 수신, 전원 Off→On 후에도 v1.0.0 유지. 로그에서 `opcode 0xfc0e` 경고 없음(TX -8dBm 정상 적용). 연결 끊김 1회(`reason=0x08`)는 SWD 연결 불량 때문이라 이슈 아님(사용자 확인).
+  **미검증:** 착용 상태 측정(연휴 중 진행 예정), 12시간 연속 수면, 여러 대 OTA, v1.0.0 기준 롤백 시나리오(코드가 v0.1.39와 같아 v0.1.39 기준 6종 결과를 그대로 사용).
+- **앱 화면 관찰(펌웨어 변경 없음):** 앱의 `Sensor1 seq gap: prev=858 now=2147484507 (2147483648 samples lost)` 표시는 dark 프레임의 bit31(`0x80000000`)을 지우지 않고 순번을 비교해서 생긴 것으로 보인다(`2147484507 = 0x80000000 + 859`, 실제로는 858→859 연속). 앱에서 `& 0x7FFFFFFF` 처리 필요 — `protocol_version_v4.md` §3, `RELEASE_NOTES_v1.0.0.md` §6에 명시.
+- **문서 정리(코드 변경 없음):** `RELEASE_NOTES_v1.0.0.md` 신규, `protocol_version_v4.md`·`tedneuro_firmware_integration.md`를 v1.0.0 기준으로 갱신, `tedneuro_partner_qa_response.md`·`app_handoff_*.md`에 v1.0.0 기준 정정 안내 추가, `v1.0_*.md` 3종과 `architecture.md` §0·§9에 v1.0.0 릴리스 상태 반영.
 
 ## v0.1.39 (2026-10-02, `dev/change_sampling_logic` 브랜치 — main 미병합, 긴급 패치)
 

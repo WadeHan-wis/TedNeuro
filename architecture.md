@@ -17,6 +17,8 @@
 
 ## 0. 현 단계 최우선 목표 (Top Priority)
 
+> **[2026-10-08 현황] v1.0.0 릴리스 완료.** 아래 Rev1 목표(3파장 raw 정확 획득)는 v1.0 사양으로 확정·검증됐다. v1.0 확정 사항은 `v1.0_결정사항.md`, 파라미터는 `v1.0_파라미터_확정.md`, 릴리스 내용과 알려진 제약은 `RELEASE_NOTES_v1.0.0.md`를 본다. 이 문서의 나머지 부분은 설계 근거이며 아래 §9·§11의 단계·미확정 표기는 작성 시점 기준이다. Battery/Thermal·생산검사·페어링·flash 로컬 저장은 v1.0 범위 밖(v1.x 이월)이다.
+
 > **각 파장(640/680/950nm)별 LED 데이터를 분리해서, AS7341로부터 I2C를 통해 정확하게 읽어오는 것**이 현재 단계의 최우선 목표다. Source multiplexing 타이밍, dark-frame subtraction, SQI, batching 등 세부 조정 사항은 **이 정확한 raw 데이터 획득이 검증된 이후** 개발하면서 순차적으로 결정한다.
 
 이 문서의 §5~7 중 LED/AS7341 정책·BLE 파라미터 구조·Ring buffer 구조·배터리 Runtime 목표는 **2026-09-15부로 확정**되었다. Thermal 세부 수치와 배터리 용량/DFU/생산검사/규제 요구사항, 논문 내 모순 2건은 여전히 **보류**다 (§11 참고).
@@ -286,6 +288,8 @@ Normal → Warning → LED current/duty 감소 → LED OFF
 | Rev 5 | Overnight Validation | 장시간 안정성(자체 시계열 drift), EEG/EOG 동시측정은 조건부(§11) |
 | Rev 6 | Power Optimization | LED PWM duty 세부 튜닝, BLE batching, Zephyr PM, peripheral PM — 8h 목표 실측 |
 | Rev 7 | Productization | Thermal 최종화, calibration/versioning, 생산검사, 규제/품질 대응 |
+
+**[2026-10-08 상태]** Rev0~2(광학 획득, BLE 스트리밍, OTA)는 v1.0.0에 반영돼 릴리스됐다(OTA는 9A 1대 검증, 서명키는 디버그 키). Rev3 중 watchdog·sensor recovery는 구현돼 있고 battery/temperature monitor·열보호는 미구현이다. Rev4 이후는 계획대로 재산정 대기다.
 
 Rev0~3(+OTA)는 **17근무일**(2026-09-14~10-12, 공휴일 제외)로 일정이 확정되어 있다. Rev4 이후는 Rev0~3 실측 데이터를 근거로 **10/12(월) 재산정 지점**에서 팀과 다시 수립한다. 상세 일정과 진행 상황은 프로젝트 트래커(`fNIRS_FW_v1.0_트래커.html`)를 참고한다.
 
