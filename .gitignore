@@ -2,3 +2,5 @@ build*/
 /_ref_fnirs_example
 *.jlink
 *.log
+/report_assets
+*.md
